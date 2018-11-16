@@ -5,14 +5,40 @@ import threading
 import struct
 import os
 
+
 a = [ 'Jose' ]
-
 def getDic():
-	ipv4 = os.popen('ifconfig en0 | grep "\<inet\>" | awk \'{ print $2 }\' | awk -F "/" \'{ print $1 }\'').read().strip()
+	ipv4 = os.popen('ifconfig wlo1 | grep "\<inet\>" | awk \'{ print $2 }\' | awk -F "/" \'{ print $1 }\'').read().strip()
 	# ipv4 = os.popen('ip addr show eth0 | grep "\<inet\>" | awk \'{ print $2 }\' | awk -F "/" \'{ print $1 }\'').read().strip()
-	print( ipv4 )
 	return ipv4
+def sendDic():
+	global a
+	multicast_group = ('224.3.29.72', 9998)
+	while 1:
+		sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+		sock.setblocking(0)
+		sock.settimeout(0.2)
+		data = json.dumps(a)
+		ttl = struct.pack('b', 1)
+		sock.setsockopt( socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, ttl )
+		sent = sock.sendto( data.encode(), multicast_group )
 
+def reciveDic():
+	multicast_group = '224.0.0.2'
+	server_address = ('', 9997)
+	while 1:
+		# Create the socket
+		sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+
+		# Bind to the server address
+		sock.bind(server_address)
+		group = socket.inet_aton(multicast_group)
+		mreq = struct.pack('4sL', group, socket.INADDR_ANY)
+		sock.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, mreq)
+
+		data = json.loads( recvall( sock ) )
+		a = data 
+		sock.close()
 def sendDirection( ip ):
 	# Enviar dirección en multicast
 	multicast_group = ('224.3.29.71', 10000)
@@ -80,7 +106,7 @@ def option( socket, option ):
 def runServer():
 	server = socket.socket( socket.AF_INET, socket.SOCK_STREAM )
 	server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-	server.bind( ('192.168.1.73', 9999) )
+	server.bind( (getDic(), 9999) )
 	server.listen( 3 )
 
 	toread = [server]
@@ -114,7 +140,9 @@ def runServer():
 					# running = len(toread) - 1
 # runServer()
 try:
-	threading.Thread( target=sendDirection, args=(getDic(),) ).start()
-	threading.Thread( target=runServer ).start()
+	threading.Thread( target=sendDic ).start()
+	threading.Thread( target=reciveDic ).start()
+	# threading.Thread( target=sendDirection, args=(getDic(),) ).start()
+	# threading.Thread( target=runServer ).start()
 except:
    print ("Error: unable to start thread")
