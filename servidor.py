@@ -5,12 +5,11 @@ import threading
 import struct
 import os
 
-a = [ 'Jose' ]
 
 def getDic():
 	ipv4 = os.popen('ifconfig en0 | grep "\<inet\>" | awk \'{ print $2 }\' | awk -F "/" \'{ print $1 }\'').read().strip()
 	# ipv4 = os.popen('ip addr show eth0 | grep "\<inet\>" | awk \'{ print $2 }\' | awk -F "/" \'{ print $1 }\'').read().strip()
-	print( ipv4 )
+	# print( ipv4 )
 	return ipv4
 
 def sendDirection( ip ):
@@ -38,21 +37,43 @@ def recvall(sock):
 			break
 	return data
 
+def reciveDic():
+	global a
+	a = []
+	multicast_group = '224.3.29.72'
+	server_address = ('', 9998)
+
+	# Create the socket
+	sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+	# sock.setblocking(0)
+	# Bind to the server address
+	sock.bind(server_address)
+	# sock.setblocking(0)
+	group = socket.inet_aton(multicast_group)
+	mreq = struct.pack('4sL', group, socket.INADDR_ANY)
+	sock.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, mreq)
+
+	data = json.loads( recvall( sock ) )
+	a = data 
+	print( 'valor a:', a )
+	sock.close()
+
 def reflecCopy():
-	multicast_group = ('224.3.29.72', 9998)
+	multicast_group = ('224.0.0.2', 9997)
 	while 1:
 		sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 		sock.setblocking(0)
 		sock.settimeout(0.2)
 		data = json.dumps(a)
-		ttl = struct.pack('b', 1)
-		sock.setsockopt( socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, ttl )
+		# ttl = struct.pack('b', 1)
+		# sock.setsockopt( socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, ttl )
 		sent = sock.sendto( data.encode(), multicast_group )
 
 def option( socket, option ):
 	if option == '1':
 		data = json.dumps(a)
 		socket.sendall( data.encode() )
+		print( 'valor a:', a )
 		print( 'Enviando diccionario' )
 	elif option == '2':
 		# recibir nuevamente
@@ -60,7 +81,8 @@ def option( socket, option ):
 		data = recvall( socket )
 		print( 'insertando...' )
 		data = data.decode()
-		a.append(data)	
+		a.append(data)
+		reflecCopy()
 
 	elif option == '3':
 		# recibir nuevamente
@@ -72,15 +94,16 @@ def option( socket, option ):
 		try:
 			index = int(index) - 1
 			del a[index]
+			reflecCopy()
 		except:
-			print( 'index inválido' )
+			print( 'Ocurrió un error' )
 		# print( 'index:' , index )
 	else: print( 'opción desconocida', option )
 
 def runServer():
 	server = socket.socket( socket.AF_INET, socket.SOCK_STREAM )
 	server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-	server.bind( ('192.168.1.73', 9999) )
+	server.bind( (getDic(), 9999) )
 	server.listen( 3 )
 
 	toread = [server]
@@ -113,8 +136,9 @@ def runServer():
 					toread.remove( s )
 					# running = len(toread) - 1
 # runServer()
-try:
-	threading.Thread( target=sendDirection, args=(getDic(),) ).start()
-	threading.Thread( target=runServer ).start()
-except:
-   print ("Error: unable to start thread")
+# try:
+reciveDic()
+threading.Thread( target=sendDirection, args=(getDic(),) ).start()
+threading.Thread( target=runServer ).start()
+# except:
+#    print ("Error: unable to start thread")
