@@ -1,44 +1,53 @@
-#!/usr/bin/python                                                                                                                                                                                                                                                    
-
 import socket
 import select
-import threading
 import json
-
-server = socket.socket( socket.AF_INET, socket.SOCK_STREAM )
-server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-server.bind( ('localhost', 10000) )
-server.listen( 3 )
-server.setblocking(0)
-
-toread = [server]
-
-running = 1
+import threading
+import struct
+import os
 
 a = [ 'Jose' ]
 
-def sendList():
-	MCAST_GRP = '224.1.1.1'
-	MCAST_PORT = 5007
+def getDic():
+	ipv4 = os.popen('ifconfig en0 | grep "\<inet\>" | awk \'{ print $2 }\' | awk -F "/" \'{ print $1 }\'').read().strip()
+	# ipv4 = os.popen('ip addr show eth0 | grep "\<inet\>" | awk \'{ print $2 }\' | awk -F "/" \'{ print $1 }\'').read().strip()
+	print( ipv4 )
+	return ipv4
+
+def sendDirection( ip ):
+	# Enviar dirección en multicast
+	multicast_group = ('224.3.29.71', 10000)
 	while 1:
-		try:
-			sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
-			sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, 32)
-			sock.sendto('Hello World!'.encode(), (MCAST_GRP, MCAST_PORT))
-			print( "Enviando copia vía multicast" )
-		except:
-			print( "No es posible enviar copiar de la lista" )
+		sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+		sock.setblocking(0)
+		sock.settimeout(0.2)
+		# sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, 32)
+		# sock.sendto(ip.encode(), (MCAST_GRP, MCAST_PORT))
+		ttl = struct.pack('b', 1)
+		sock.setsockopt( socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, ttl )
+		sent = sock.sendto( ip.encode(), multicast_group )
+
 
 def recvall(sock):
-    BUFF_SIZE = 1024 # 4 KiB
-    data = b''
-    while True:
-        part = sock.recv(BUFF_SIZE)
-        data += part
-        if len(part) < BUFF_SIZE:
-            # either 0 or end of data
-            break
-    return data
+	BUFF_SIZE = 1024 # 4 KiB
+	data = b''
+	while True:
+		part = sock.recv(BUFF_SIZE)
+		data += part
+		if len(part) < BUFF_SIZE:
+			# either 0 or end of data
+			break
+	return data
+
+def reflecCopy():
+	multicast_group = ('224.3.29.72', 9998)
+	while 1:
+		sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+		sock.setblocking(0)
+		sock.settimeout(0.2)
+		data = json.dumps(a)
+		ttl = struct.pack('b', 1)
+		sock.setsockopt( socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, ttl )
+		sent = sock.sendto( data.encode(), multicast_group )
 
 def option( socket, option ):
 	if option == '1':
@@ -65,11 +74,21 @@ def option( socket, option ):
 			del a[index]
 		except:
 			print( 'index inválido' )
-		print( 'index:' , index )
+		# print( 'index:' , index )
 	else: print( 'opción desconocida', option )
 
 def runServer():
+	server = socket.socket( socket.AF_INET, socket.SOCK_STREAM )
+	server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+	server.bind( ('192.168.1.73', 9999) )
+	server.listen( 3 )
+
+	toread = [server]
+
+	running = 1
+																																																				   
 	while 1:
+
 		rready,wready,err = select.select( toread, [], [] )
 		for s in rready:
 			if s == server:
@@ -86,21 +105,16 @@ def runServer():
 					print( "Received %s" % ( data  ) )
 					option( s, data.decode() )
 				else:
-					print( "Client disconnected" )
+					print( "Desconexión de cliente" )
 					s.close()
 
 					# remove socket so we don't watch an invalid 
 					# descriptor, decrement client count                                                                                                                                                                      
-					# toread.remove( s )
+					toread.remove( s )
 					# running = len(toread) - 1
-
-	# clean up                                                                                                                                                                                                                                                           
-	server.close()
-
-
-sendList()
-# try:
-# 	# threading.Thread(target=runServer).start()
-# 	# threading.Thread(target=).start()
-# except:
-#    print ("Error: unable to start thread")
+# runServer()
+try:
+	threading.Thread( target=sendDirection, args=(getDic(),) ).start()
+	threading.Thread( target=runServer ).start()
+except:
+   print ("Error: unable to start thread")
