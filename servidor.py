@@ -7,7 +7,7 @@ import os
 
 
 def getDic():
-	ipv4 = os.popen('ifconfig en0 | grep "\<inet\>" | awk \'{ print $2 }\' | awk -F "/" \'{ print $1 }\'').read().strip()
+	ipv4 = os.popen('ifconfig wlo1 | grep "\<inet\>" | awk \'{ print $2 }\' | awk -F "/" \'{ print $1 }\'').read().strip()
 	# ipv4 = os.popen('ip addr show eth0 | grep "\<inet\>" | awk \'{ print $2 }\' | awk -F "/" \'{ print $1 }\'').read().strip()
 	# print( ipv4 )
 	return ipv4
@@ -41,22 +41,28 @@ def reciveDic():
 	global a
 	a = []
 	multicast_group = '224.3.29.72'
-	server_address = ('', 9998)
+	port = 9998
 
 	# Create the socket
-	sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-	# sock.setblocking(0)
-	# Bind to the server address
-	sock.bind(server_address)
-	# sock.setblocking(0)
-	group = socket.inet_aton(multicast_group)
-	mreq = struct.pack('4sL', group, socket.INADDR_ANY)
-	sock.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, mreq)
+	send_address = (multicast_group, port) # Set the address to send to
+	s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)    # Create Datagram Socket (UDP)
+	s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1) # Make Socket Reusable
+	ttl = struct.pack('b', 1)
+	s.setsockopt( socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, ttl )
+	# s.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1) # Allow incoming broadcasts
+	s.setblocking(False) # Set socket to non-blocking mode
+	s.bind(('', port))
 
-	data = json.loads( recvall( sock ) )
-	a = data 
-	print( 'valor a:', a )
-	sock.close()
+	data = ''
+	ready = select.select([s], [], [], 2)
+	if ready[0]:
+		data = mysocket.recv(1024)
+
+	print('data', data)
+ 
+	# a = json.loads( data ) 
+	# print( 'valor a:', a )
+	s.close()
 
 def reflecCopy():
 	multicast_group = ('224.0.0.2', 9997)
@@ -137,8 +143,8 @@ def runServer():
 					# running = len(toread) - 1
 # runServer()
 # try:
-reciveDic()
-threading.Thread( target=sendDirection, args=(getDic(),) ).start()
-threading.Thread( target=runServer ).start()
+threading.Thread( target=reciveDic ).start()
+# threading.Thread( target=sendDirection, args=(getDic(),) ).start()
+# threading.Thread( target=runServer ).start()
 # except:
 #    print ("Error: unable to start thread")
